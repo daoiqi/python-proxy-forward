@@ -10,6 +10,7 @@ def log(msg):
     print '[%s] %s' % (time.ctime(),msg)
 
 class ForwardServer():
+    PAGE_SIZE = 4096
     def __init__(self):
         self.listen_host = None
         self.listen_port = None
@@ -83,7 +84,7 @@ class ForwardServer():
 
         while True:
             try:
-                data = sock_in.recv(4096)
+                data = sock_in.recv( ForwardServer.PAGE_SIZE )
             except Exception, e:
                 log('Socket read error of %s: %s' % (addr_in, str(e)))
                 break
@@ -100,8 +101,6 @@ class ForwardServer():
 
             log('%s -> %s (%d B)' % (addr_in, addr_out, len(data)))
 
-        sock_in.shutdown()
-        sock_out.shutdown()
         sock_in.close()
         sock_out.close()
 
@@ -135,8 +134,7 @@ class ForwardClient():
             sock_out.close()
             log('Remote connect error: %s' % str(e))
             raise Exception,'Remote connect error: %s' % str(e)
-        print sock_out.getpeername()
-        exit()
+
         return sock_out
 
 
@@ -144,5 +142,8 @@ class ForwardClient():
 
 if __name__ == '__main__':
     serv = ForwardServer()
-    serv.setListen('127.0.0.1',10000).setRemote('127.0.0.1',3306)
+    serv.setListen('127.0.0.1',12000).setRemote('127.0.0.1',3306).setProxySocks5('127.0.0.1',7700)
     serv.serve()
+
+
+
