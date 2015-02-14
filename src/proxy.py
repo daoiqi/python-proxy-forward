@@ -4,12 +4,15 @@
 import time
 import socket
 import socks  #third part plugin
-import threading
+import threading,signal
+import ConfigParser,copy,re
 
 def log(msg):
     print '[%s] %s' % (time.ctime(),msg)
 
-class ForwardServer():
+is_exit = False
+
+class ForwardServer(object):
     PAGE_SIZE = 4096
     def __init__(self):
         self.listen_host = None
@@ -47,7 +50,7 @@ class ForwardServer():
     def serve(self):
         sock_server = self._listen()
 
-        while True:
+        while not is_exit:
             try:
                 sock, addr = sock_server.accept()
             except (KeyboardInterrupt, SystemExit):
@@ -66,10 +69,14 @@ class ForwardServer():
             threading.Thread(target=self._forward, args=(sock,) ).start()
             log('New clients from %s:%d' % addr)
 
+        log('exit server')
+
     def _forward(self,sock_in):
         sock_out = None
         try:
+            print self.remote_host,self.remote_port
             sock_out = ForwardClient(self.remote_host,self.remote_port,self.proxy_host,self.proxy_port).getClient()
+            log('get the client socks done')
         except Exception, e:
             log('get Remote Client error: %s' % str(e))
             raise e
@@ -105,7 +112,7 @@ class ForwardServer():
         sock_out.close()
 
 
-class ForwardClient():
+class ForwardClient(object):
     def __init__(self,host,port,proxy_host=None,proxy_port=None):
         self.remote_host = host
         self.remote_port = port
@@ -129,6 +136,7 @@ class ForwardClient():
             log('using socks proxy %s:%d' % ( self.proxy_host,self.proxy_port))
 
         try:
+            print 'remote,=',(self.remote_host, self.remote_port)
             sock_out.connect((self.remote_host, self.remote_port))
         except socket.error, e:
             sock_out.close()
@@ -138,12 +146,80 @@ class ForwardClient():
         return sock_out
 
 
+class Config(object):
+    def parser(self,filename):
+        config = ConfigParser.SafeConfigParser()
+        config.read(filename)
 
+        dictionary = {}
+        for section in config.sections():
+            dictionary[section] = {}
+            for option in config.options(section):
+                dictionary[section][option] = config.get(section, option)
+        return dictionary
+
+
+def handler(signum, frame):
+     global is_exit
+     is_exit = True
+     print "receive a signal %d, is_exit = %d"%(signum, is_exit)
+
+def start():
+    re_ip_port = r'^(?P<addr>.+:)?(?P<port>[0-9]{1,5})$'
+    conf = Config()
+    data = conf.parser('proxy.ini')
+    for key in data.keys():
+        print key
+        print data[key]
+        listen = data[key].get('listen')
+        remote = data[key].get('remote')
+        proxy = data[key].get('socks5',None)
+
+        local_addr,local_port = None,None
+        remote_addr,remote_port = None,None
+        socks5_addr,socks5_port = None,None
+
+        x = re.match(re_ip_port, listen)
+        if not x:
+            log('listen format error!')
+            exit(-1)
+        local_addr = x.group('addr') or '0.0.0.0'
+        local_addr = local_addr.rstrip(':')
+        local_port = int(x.group('port'))
+
+        x = re.match(re_ip_port, remote)
+        if not x:
+            log('listen format error!')
+            exit(-1)
+        remote_addr = x.group('addr') or '0.0.0.0'
+        remote_addr = remote_addr.rstrip(':')
+        remote_port = int(x.group('port'))
+
+        if proxy:
+            x = re.match(re_ip_port, proxy)
+            if not x:
+                log('listen format error!')
+                exit(-1)
+            socks5_addr = x.group('addr') or '0.0.0.0'
+            socks5_addr = socks5_addr.rstrip(':')
+            socks5_port = int(x.group('port'))
+
+        def proxy(local_addr,local_port,remote_addr,remote_port,socks5_addr,socks5_port):
+            serv = ForwardServer()
+            print local_addr,local_port,remote_addr,remote_port,socks5_addr,socks5_port
+            serv.setListen(local_addr,local_port).setRemote(remote_addr,remote_port).setProxySocks5(socks5_addr,socks5_port)
+            serv.serve()
+
+
+        threading.Thread(target=proxy,args=(local_addr,local_port,remote_addr,remote_port,socks5_addr,socks5_port)).start()
 
 if __name__ == '__main__':
-    serv = ForwardServer()
-    serv.setListen('127.0.0.1',12000).setRemote('127.0.0.1',3306).setProxySocks5('127.0.0.1',7700)
-    serv.serve()
-
+    signal.signal(signal.SIGINT, handler)
+    signal.signal(signal.SIGTERM, handler)
+    #options = Config().parser('proxy.ini')
+    #print options
+    #serv = ForwardServer()
+    #serv.serve()
+    start()
 
 
