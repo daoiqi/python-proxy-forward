@@ -1,12 +1,16 @@
 # tcp-proxy-by-python  [![Build Status](https://travis-ci.org/daoiqi/python-proxy-forward.png)](https://travis-ci.org/daoiqi/python-proxy-forward)
 tcp proxy using python code
 
+download code ,and run it.
+
 # Require
 require [`PySocks`](https://github.com/Anorov/PySocks)
 
 `pip install PySocks`
 
 # Config
+modify `proxy.ini`, such as:
+
 ```
 [mysql_section]
 listen=12000                  # listen 0.0.0.0:12000
@@ -19,8 +23,14 @@ remote=123.123.123.123:21     # remote host:port
 #socks5=127.0.0.1:7700        # not proxy
 ```
 
-# socks5 proxy
+# Run
 ```
+cd ./src
+python proxy.py
+```
+
+# socks5 proxy
+```bash
 ssh -2 -D 7700 -l username host -p 22 -Nf  -o ServerAliveInterval=300 -o ServerAliveCountMax=3
 ```
 
