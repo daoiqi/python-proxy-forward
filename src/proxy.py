@@ -4,11 +4,39 @@
 import time
 import socket
 import socks  #third part plugin
-import threading,signal
+import threading,signal,os,sys
 import ConfigParser,copy,re
 
 def log(msg):
     print '[%s] %s' % (time.ctime(),msg)
+
+def pid_exists(pid):
+    """
+    from http://stackoverflow.com/questions/568271/how-to-check-if-there-exists-a-process-with-a-given-pid
+    """
+    if os.name == 'posix':
+        """Check whether pid exists in the current process table."""
+        import errno
+        if pid < 0:
+            return False
+        try:
+            os.kill(pid, 0)
+        except OSError as e:
+            return e.errno == errno.EPERM
+        else:
+            return True
+    else:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        SYNCHRONIZE = 0x100000
+
+        process = kernel32.OpenProcess(SYNCHRONIZE, 0, pid)
+        if process != 0:
+            kernel32.CloseHandle(process)
+            return True
+        else:
+            return False
+
 
 is_exit = False
 
@@ -160,11 +188,42 @@ class Config(object):
 
 
 def handler(signum, frame):
-     global is_exit
-     is_exit = True
-     print "receive a signal %d, is_exit = %d"%(signum, is_exit)
+    print signum , frame
+    global is_exit
+    is_exit = True
+    print "receive a signal %d, is_exit = %d"%(signum, is_exit)
 
 def start():
+    try:
+        pid = os.fork()
+        if pid > 0:
+            # exit first parent
+            log('parent process exit')
+            sys.exit(0)
+    except OSError, e:
+        sys.stderr.write("fork #1 failed: %d (%s)\n" % (e.errno, e.strerror))
+        sys.exit(1)
+
+        ## write pid
+    pid = str(os.getpid())
+    pidfile = "./proxy_daemon.pid"
+
+    if os.path.isfile(pidfile):
+        f = open(pidfile,'r')
+        filePid = int(f.read())
+        log('read pid file pid=%s' % filePid)
+        if pid_exists(filePid):
+            log( "%s already exists, and pid=%s exists exiting" % (pidfile , filePid ) )
+            sys.exit()
+        else:
+            log('the pid file pid=%s not exists' % filePid)
+        f.close()
+
+    file(pidfile, 'w').write(pid)
+    log('write pid to %s' % pidfile)
+
+    log('now is child process do')
+
     re_ip_port = r'^(?P<addr>.+:)?(?P<port>[0-9]{1,5})$'
     conf = Config()
     data = conf.parser('proxy.ini')
@@ -212,6 +271,13 @@ def start():
 
 
         threading.Thread(target=proxy,args=(local_addr,local_port,remote_addr,remote_port,socks5_addr,socks5_port)).start()
+
+    log('start all proxy done')
+
+def exit():
+    pidfile = "./proxy_daemon.pid"
+    os.remove(pidfile)
+    log('exit')
 
 if __name__ == '__main__':
     signal.signal(signal.SIGINT, handler)
