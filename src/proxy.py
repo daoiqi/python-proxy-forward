@@ -7,41 +7,17 @@ import socks  #third part plugin
 import threading,signal,os,sys
 import ConfigParser,copy,re
 
+
 def log(msg):
     print '[%s] %s' % (time.ctime(),msg)
-
-def pid_exists(pid):
-    """
-    from http://stackoverflow.com/questions/568271/how-to-check-if-there-exists-a-process-with-a-given-pid
-    """
-    if os.name == 'posix':
-        """Check whether pid exists in the current process table."""
-        import errno
-        if pid < 0:
-            return False
-        try:
-            os.kill(pid, 0)
-        except OSError as e:
-            return e.errno == errno.EPERM
-        else:
-            return True
-    else:
-        import ctypes
-        kernel32 = ctypes.windll.kernel32
-        SYNCHRONIZE = 0x100000
-
-        process = kernel32.OpenProcess(SYNCHRONIZE, 0, pid)
-        if process != 0:
-            kernel32.CloseHandle(process)
-            return True
-        else:
-            return False
 
 
 is_exit = False
 
+
 class ForwardServer(object):
     PAGE_SIZE = 4096
+
     def __init__(self):
         self.listen_host = None
         self.listen_port = None
@@ -49,8 +25,6 @@ class ForwardServer(object):
         self.remote_port = None
         self.proxy_host = None
         self.proxy_port = None
-
-
 
     def setListen(self,host,port):
         self.listen_host = host
@@ -174,17 +148,6 @@ class ForwardClient(object):
         return sock_out
 
 
-class Config(object):
-    def parser(self,filename):
-        config = ConfigParser.SafeConfigParser()
-        config.read(filename)
-
-        dictionary = {}
-        for section in config.sections():
-            dictionary[section] = {}
-            for option in config.options(section):
-                dictionary[section][option] = config.get(section, option)
-        return dictionary
 
 
 def handler(signum, frame):
@@ -193,99 +156,20 @@ def handler(signum, frame):
     is_exit = True
     print "receive a signal %d, is_exit = %d"%(signum, is_exit)
 
-def start():
-    try:
-        pid = os.fork()
-        if pid > 0:
-            # exit first parent
-            log('parent process exit')
-            sys.exit(0)
-    except OSError, e:
-        sys.stderr.write("fork #1 failed: %d (%s)\n" % (e.errno, e.strerror))
-        sys.exit(1)
-
-        ## write pid
-    pid = str(os.getpid())
-    pidfile = "./proxy_daemon.pid"
-
-    if os.path.isfile(pidfile):
-        f = open(pidfile,'r')
-        filePid = int(f.read())
-        log('read pid file pid=%s' % filePid)
-        if pid_exists(filePid):
-            log( "%s already exists, and pid=%s exists exiting" % (pidfile , filePid ) )
-            sys.exit()
-        else:
-            log('the pid file pid=%s not exists' % filePid)
-        f.close()
-
-    file(pidfile, 'w').write(pid)
-    log('write pid to %s' % pidfile)
-
-    log('now is child process do')
-
-    re_ip_port = r'^(?P<addr>.+:)?(?P<port>[0-9]{1,5})$'
-    conf = Config()
-    data = conf.parser('proxy.ini')
-    for key in data.keys():
-        print key
-        print data[key]
-        listen = data[key].get('listen')
-        remote = data[key].get('remote')
-        proxy = data[key].get('socks5',None)
-
-        local_addr,local_port = None,None
-        remote_addr,remote_port = None,None
-        socks5_addr,socks5_port = None,None
-
-        x = re.match(re_ip_port, listen)
-        if not x:
-            log('listen format error!')
-            exit(-1)
-        local_addr = x.group('addr') or '0.0.0.0'
-        local_addr = local_addr.rstrip(':')
-        local_port = int(x.group('port'))
-
-        x = re.match(re_ip_port, remote)
-        if not x:
-            log('listen format error!')
-            exit(-1)
-        remote_addr = x.group('addr') or '0.0.0.0'
-        remote_addr = remote_addr.rstrip(':')
-        remote_port = int(x.group('port'))
-
-        if proxy:
-            x = re.match(re_ip_port, proxy)
-            if not x:
-                log('listen format error!')
-                exit(-1)
-            socks5_addr = x.group('addr') or '0.0.0.0'
-            socks5_addr = socks5_addr.rstrip(':')
-            socks5_port = int(x.group('port'))
-
-        def proxy(local_addr,local_port,remote_addr,remote_port,socks5_addr,socks5_port):
-            serv = ForwardServer()
-            print local_addr,local_port,remote_addr,remote_port,socks5_addr,socks5_port
-            serv.setListen(local_addr,local_port).setRemote(remote_addr,remote_port).setProxySocks5(socks5_addr,socks5_port)
-            serv.serve()
-
-
-        threading.Thread(target=proxy,args=(local_addr,local_port,remote_addr,remote_port,socks5_addr,socks5_port)).start()
-
-    log('start all proxy done')
-
-def exit():
-    pidfile = "./proxy_daemon.pid"
-    os.remove(pidfile)
-    log('exit')
 
 if __name__ == '__main__':
     signal.signal(signal.SIGINT, handler)
     signal.signal(signal.SIGTERM, handler)
     #options = Config().parser('proxy.ini')
     #print options
-    #serv = ForwardServer()
-    #serv.serve()
-    start()
+    listen = ("127.0.0.1", 3307)
+    remote = ("127.0.0.1", 3306)
+    args = listen + remote
+    serv = ForwardServer()
+    serv.setListen(listen[0], listen[1])
+    serv.setRemote(remote[0], remote[1])
+    serv.serve()
+    # start()
+
 
 
